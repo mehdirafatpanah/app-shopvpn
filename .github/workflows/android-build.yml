@@ -18,27 +18,33 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # این پروژه فایل gradlew را همراه ندارد (Gradle wrapper نبود)، پس
-      # به‌جای «./gradlew build» از خودِ اکشن setup-gradle می‌خواهیم یک
-      # نسخه‌ی مشخص از Gradle را نصب و روی PATH بگذارد؛ دیگر نیازی به
-      # gradlew نیست. اگر بعداً خودت با دستور «gradle wrapper» یک
-      # gradlew واقعی به ریشه‌ی پروژه اضافه کردی، می‌توانی این کار را
-      # حذف کنی و مستقیم «./gradlew assembleDebug» صدا بزنی.
       - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
 
-      # ریشه‌ی واقعی پروژه (جایی که settings.gradle.kts هست) را پیدا
-      # می‌کند، چون بسته به نحوه‌ی آپلود فایل‌ها به گیت‌هاب ممکن است
-      # داخل یک زیرپوشه قرار گرفته باشند. نتیجه را در PROJECT_DIR
-      # ذخیره می‌کند تا مراحل بعدی از آن استفاده کنند.
-      - name: Locate Gradle project root
+      # به‌جای آپلود تک‌تک فایل‌ها (که موقع آپلود از موبایل ساختار
+      # پوشه‌ها بهم می‌ریزد)، فقط یک فایل ZIP از کل پروژه را در ریشه‌ی
+      # ریپازیتوری آپلود کن. این مرحله خودش zip را پیدا کرده،
+      # extract می‌کند و ریشه‌ی واقعی پروژه (پوشه‌ای که
+      # settings.gradle.kts در آن است) را برای مراحل بعد مشخص می‌کند.
+      - name: Extract project zip
         id: locate
         run: |
-          MATCH=$(find "$GITHUB_WORKSPACE" -maxdepth 3 -name "settings.gradle.kts" -o -maxdepth 3 -name "settings.gradle" | head -n 1)
+          set -e
+          ZIP_FILE=$(find "$GITHUB_WORKSPACE" -maxdepth 2 -iname "*.zip" | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "::error::هیچ فایل .zip در ریشه‌ی ریپو پیدا نشد. یک فایل zip از کل پروژه در ریشه‌ی ریپازیتوری آپلود کن."
+            exit 1
+          fi
+          echo "Found zip: $ZIP_FILE"
+          EXTRACT_DIR="$GITHUB_WORKSPACE/_extracted"
+          mkdir -p "$EXTRACT_DIR"
+          unzip -o -q "$ZIP_FILE" -d "$EXTRACT_DIR"
+
+          MATCH=$(find "$EXTRACT_DIR" -maxdepth 4 \( -name "settings.gradle.kts" -o -name "settings.gradle" \) | head -n 1)
           if [ -z "$MATCH" ]; then
-            echo "::error::settings.gradle(.kts) پیدا نشد. فایل‌های پروژه درست آپلود نشده‌اند."
+            echo "::error::داخل zip فایل settings.gradle.kts پیدا نشد. مطمئن شو zip از ریشه‌ی پروژه‌ی صحیح ساخته شده."
             exit 1
           fi
           PROJECT_DIR=$(dirname "$MATCH")
